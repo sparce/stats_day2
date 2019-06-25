@@ -4,6 +4,7 @@ output: html_notebook
 ---
 
 ```{r loading_libraries, include=FALSE}
+library(MASS) #Add for 'rlm'
 library(tidyverse)
 library(ggResidpanel)
 ```
@@ -53,6 +54,9 @@ Finally, don't forget to check your model to check that your assumptions around 
 ```{r gapminder_check}
 resid_panel(gapminder_model)
 ```
+
+
+#### Trying it out
 
 Now, you try with the inbuilt diamonds datasest (use `?diamonds` for an explanation of the 
 variables). Start simple like with the gapminder example, see if you can model the relationship 
@@ -138,8 +142,7 @@ linear regression and robust regression as follows:
 ```{r normal_model}
 normal_noise_lm <- lm(normal_noise ~ x, data = test_data)
 
-library(MASS) #Add for 'rlm'
-
+# rlm from the MASS package
 normal_noise_rlm <- rlm(normal_noise ~ x, data = test_data)
 
 normal_noise_lm
@@ -163,6 +166,8 @@ ggplot(test_data, aes(x = x, y = normal_noise)) +
 
 What do you notice about these lines?
 
+#### Trying it out
+
 Now, repeat this exercise for the two other data sets, `non_normal_noise` and `outliers`
 
 ```{r other_data}
@@ -170,6 +175,164 @@ Now, repeat this exercise for the two other data sets, `non_normal_noise` and `o
 ```
 What are the differences between the linear and robust regressions for each data set? Again, how do these compare with the known true function of $y = 2x +5$?
 
+# Exercise - Principle Components Analysis
 
+To introduce PCA, we will work with the inbuilt mtcars dataset. First, we will select the variables 
+and scale them all to have mean equal to zero and standard deviation equal to one.
 
+```{r mtcars_data}
+# Removing am and vs because they are categorical variables
+# Removing mpg because we will use it later to show how we can use PCA
+mtcars_scaled <- select(mtcars, -mpg, -am, -vs) %>% scale
 
+head(mtcars_scaled)
+```
+
+To perform PCA, we will use the `prcomp` function. This function takes a data frame of numeric 
+values that provide the data for the PCA. We have already scaled the data, but if you have not
+you can provide `prcomp` the argument `scale. = TRUE` to have it do the scaling for you. (note the 
+fullstop at the end of scale though).
+
+```{r mtcars_PCA}
+mtcars_pca <- prcomp(mtcars_scaled)
+
+summary(mtcars_pca)
+```
+
+The summary of the PCA results tells us how much of the variance in our data is explained by each 
+component. In this case, the first component (PC1) explains 60% of the variance, and the second (PC2)
+explains 26% for a combined total of 86% explained by both PC1 and PC2. You can also see this in 
+graphical form by calling `plot` on the PCA result.
+
+The "rotated" data can be accessed using `mtcars_pca$x` and can be used to plot the data along the 
+principal components.
+
+```{r mtcars_plot}
+head(mtcars_pca$x)
+
+# This is stored as a matrix. Good for mathematical functions, not so 
+# good for tidyverse manipulation and plotting. So we will convert it.
+mtcars_pca_plot <- mtcars_pca$x %>% 
+  as_tibble(rownames = "car") %>% 
+  ggplot(aes(x = PC1, y = PC2)) +
+  geom_point() 
+
+mtcars_pca_plot
+```
+
+The values used to transform the original data into the principal components can be found in 
+`mtcars_pca$rotation`.
+
+#### Using PCA in regression
+
+We can use PCA results in a linear regression analysis. They may have several benefits in this case
+since the transformed variables are uncorrelated from each other, and the first few components will 
+explain most of the variation in a dataset.
+
+For example, running a linear regression on the mtcars dataset:
+```{r mtcars_lm}
+# . is a shortcut for "all other variables"
+lm(mpg ~ ., data = mtcars) %>% 
+  summary()
+```
+
+If instead, we combine the mpg variable with our principle component variables from before:
+```{r mtcars_pca_lm}
+#Combine
+rotated_mtcars <- as_tibble(mtcars_pca$x)
+rotated_mtcars$mpg <- mtcars$mpg
+
+#Model
+lm(mpg ~ ., data = rotated_mtcars) %>% 
+  summary()
+```
+
+And since PC1/PC2/PC3 explained a total of 92% of the variance in the dataset between them, we would
+probably only have needed to include them from the start.
+
+#### Trying it out
+
+For another example of where PCA can be helpful, we will use the transcriptome.csv file in the data
+folder. This data contains the gene expression values for 5380 genes across 24 samples of a heat
+stress experiment (8 timepoints and three replicates). To get this data ready, we will need to read
+it in, remove the non-numerical sample names from the data and scale it.
+
+```{r expression_data}
+heat_stress <- read_csv("data/transcriptome.csv") %>% 
+  column_to_rownames("sample") %>% 
+  scale()
+
+# Dataset is 24 * 5380. Show just a small part as an example
+heat_stress[1:5, 1:5]
+```
+
+Now, you can run the PCA:
+
+```{r expression_pca}
+head_stress_pca <- _____
+
+summary(heat_stress_pca)
+```
+
+And plot the samples along the principal components. Since the sample names are of the form 
+Replicate_Timepoint, you can separate those variables out using `separate`:
+```{r expression_plot}
+heat_stress_pca$x %>% 
+  as_tibble(rownames = "sample") %>% 
+  separate(_____, into = _____, sep = "_") %>% 
+  ggplot(aes(_____)) +
+  geom_point()
+```
+
+Once you have got the basic plot working, try colouring the points by the replicate or the timepoint.
+
+Which of these factors is more associated with the variation in the expression data and what does
+that tell you about the experiment?
+
+Sometimes moving beyond the first two PCs can provide valuable information as well. Plot the samples
+along PC3 and PC4 and colour them by timepoint. Can you guess how long the heat stress lasted?
+
+(If you struggle distinguishing the different colours, you could try using `geom_text` instead and 
+provide the timepoint to the `label` aesthetic.)
+
+# Exercise - k-means clustering
+
+The function `kmeans` performs k-means clustering on a dataset. The function takes the dataset you
+wish to cluster, and the number of clusters you wish to fit.
+
+We will revisit our PCA on the mtcars dataset and cluster the cars along the first two principal
+components. There are several ways you can choose the best number of clusters, but for this example
+we will arbitrarily choose to cluster into five groups.
+
+```{r mtcars_kmeans}
+#Select just PC1/PC2
+mtcars_PC1_PC2 <- mtcars_pca$x[,c("PC1", "PC2")]
+
+#Cluster mtcars on PC1/PC2
+set.seed(30)
+mtcars_cluster <- kmeans(mtcars_PC1_PC2, centers = 5)
+
+mtcars_cluster
+```
+
+To extract the clustering assignment for each car, we can use `mtcars_cluster$cluster`. To find the 
+coordinates for the final position of the centroids, use `mtcars_cluster$centers`.
+
+We can overlay this new information on top of the plot we produced earlier
+
+```{r mtcars_cluster_plot}
+# Data conversion
+car_clusters <- as.character(mtcars_cluster$cluster)
+car_centroids <- as_tibble(mtcars_cluster$centers)
+
+# Plot it
+mtcars_pca_plot +
+  geom_point(aes(colour = car_clusters)) +
+  geom_point(data = car_centroids)
+```
+
+#### Try it out
+
+Apply k-means clustering to the first two principal components of the gene expression data you used 
+above. Overlay this clustering information on a plot of the samples. How many clusters work best 
+with the data?
