@@ -1,0 +1,175 @@
+---
+title: "Stats in R - Day 2"
+output: html_notebook
+---
+
+```{r loading_libraries, include=FALSE}
+library(tidyverse)
+library(ggResidpanel)
+```
+
+# Exercise - Linear regression: Multiple variables
+
+To get started, we will consider a small extension to our linear models by introducing a second 
+explanatory variable. We will look at the gapminder data for 1982, and try to model life expectancy
+as a function of GDP per capita and continent.
+
+```{r gapminder_data}
+gapminder_1982 <- read_csv("data/gapminder.csv") %>% 
+  filter(year == 1982)
+
+ggplot(gapminder_1982, aes(x = gdpPercap, y = lifeExp, colour = continent)) +
+  geom_point() 
+```
+
+What transformation(s?) do you think this will need to linearise the relationship?
+
+We will use a logarithmic transformation of GDP per capita for the rest of this example
+(specifically log2 for easier interpretation later on).
+
+To fit a linear model using GDP per capita and continent, we include both terms in the formula we 
+provide to `lm`:
+
+```{r gapminder_model}
+gapminder_model <- lm(lifeExp ~ log2(gdpPercap) + continent, data = gapminder_1982)
+
+#Check results
+summary(gapminder_model)
+```
+
+How do we interpret this result? Remember that the formula for the multivariate model is:
+                $$Y = B_1*X_1 + B_2*X_2 + \dots + B_0 + \epsilon$$
+In our example, $Y$ is life expectancy, $X_1$ is log2(GDP per capita), and $X_2$ is the continent.
+
+Running `lm` determines the 'best' values for the $B$ variables, and these values are what is 
+displayed in the summary table. $B_0$ is the (Intercept) coefficient, and $B_1$ is the
+log2(gdpPercap) coefficient. $B_2$ is a little different because continent is not a numerical 
+variable like GDP per capita is. Instead, $B_2$ is equal to zero if the continent is Africa (the
+first alphabetically, and so the 'default' option), equal to the continentAmericas coefficient when 
+the continent is Americas, and so forth.
+
+Finally, don't forget to check your model to check that your assumptions around the residuals hold.
+
+```{r gapminder_check}
+resid_panel(gapminder_model)
+```
+
+Now, you try with the inbuilt diamonds datasest (use `?diamonds` for an explanation of the 
+variables). Start simple like with the gapminder example, see if you can model the relationship 
+between a diamond's price (`price`), with it's weight (`carat`), and colour (`color`).
+
+Start by exploring the relationship visually, any transformations needed?
+```{r diamonds_data}
+# diamonds contains ordered factors, a data type we haven't introduced yet.
+# We will just convert these to characters for use in this example
+diamonds <- mutate_if(diamonds, is.factor, as.character)
+
+ggplot(diamonds, aes(x = _____, y = _____, colour = _____)) +
+  geom_point(alpha = 0.5) +
+  scale_?????
+```
+
+Then create a model, check the results with `summary`, and assess the model residuals.
+```{r diamonds_model}
+diamonds_model <- lm(_____ ~ __________, data = diamonds)
+
+```
+
+What effect does increasing carat have on the price of a diamond? What effect do the different 
+colours have on this relationship?
+
+If you are comfortable with this exercise, try including extra variables into the model. Use both 
+numeric and categorical variables and see if you can still interpret the model summary.
+
+# Exercise - Robust regression 
+
+In the previous session, the concept of linear regression was introduced as a way of modelling the 
+response *Y* from a predictor *X* using the equation:
+        $$Y = aX + b$$
+where *a* is the slope of the curve and *b* is the intercept.
+
+The assumptions made in using linear regression  are that the residuals are normal (Gaussian), 
+independent and are of constant variance.
+
+There are occasions where some of these assumptions may not be met. An example is when there may be
+outliers in the data set such as the test data set used in the previous session. In this case, two 
+different types of data were generated; one where non-normal (non-Gaussian) noise was added and 
+another that had some outliers.
+
+On some occasions, it is appropriate to use robust regression to analyse such data.
+In R, this can be done using the `rlm` command that is availabe in the `MASS` package.
+
+In this set of exercises, you will have an opportunity to try the `rlm` command.
+
+First, we will need to generate data used in the previous session. 
+
+```{r regression_data}
+set.seed(20)
+x = seq(1, 10, by = 0.5)
+perfect_linear <- (2 * x) + 5
+
+test_data <- tibble(x, perfect_linear) %>%
+  mutate(
+    #Normal noise
+    normal_noise = perfect_linear + rnorm(n = length(x), mean = 0, sd = 2),
+    
+    #Non-normal noise: use exponential distribution
+    non_normal_noise = perfect_linear + rexp(n = length(x)),
+    
+    #Outliers: normal noise plus 10% chance of adding 8 to the value
+    outliers = perfect_linear +
+      rnorm(n = length(x)) +
+      sample(
+        c(0, 8),
+        prob = c(0.9, 0.1),
+        size = length(x),
+        replace = T
+      ),
+  )
+```
+
+Recall from the previous session that, in R, it is possible to form models based on linear 
+regression using the `lm` command. Similarly, models based on robust regression are formed using 
+`rlm`.
+
+So, in the case of the test data where normal noise has been added, we can form models based on 
+linear regression and robust regression as follows:
+
+```{r normal_model}
+normal_noise_lm <- lm(normal_noise ~ x, data = test_data)
+
+library(MASS) #Add for 'rlm'
+
+normal_noise_rlm <- rlm(normal_noise ~ x, data = test_data)
+
+normal_noise_lm
+normal_noise_rlm
+```
+The last two statements show a short description of the models. What are the differences between the
+linear and robust regressions for the data with normal noise added? How do these compare with the 
+ideal function $y = 2x + 5$?
+
+
+We can plot the regression lines these produce to compare them graphically. In this example, we will
+manually input the slope and intercept values from the above models, but you could also get the same
+results with `geom_smooth()`
+
+```{r}
+ggplot(test_data, aes(x = x, y = normal_noise)) +
+  geom_point() +
+  geom_abline(intercept = 4.577, slope = 1.998, colour = "blue") + # fit with lm
+  geom_abline(intercept = 4.296218, slope = 2.038920, colour = "red") # fit with rlm
+```
+
+What do you notice about these lines?
+
+Now, repeat this exercise for the two other data sets, `non_normal_noise` and `outliers`
+
+```{r other_data}
+
+```
+What are the differences between the linear and robust regressions for each data set? Again, how do these compare with the known true function of $y = 2x +5$?
+
+
+
+
